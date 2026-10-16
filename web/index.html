@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pitchside</title>
+<style>
+  :root {
+    --bg: #0b0f14; --panel: #121821; --line: #223042; --ink: #e8eef6; --muted: #8a9bb0;
+    --grass: #12351f; --grass2: #153d24; --chalk: rgba(255,255,255,.55);
+    --accent: #f5c518; --ok: #3fb950; --warn: #f0883e;
+    --home: #1f6feb; --away: #d1242f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 14px/1.45 "Inter", system-ui, -apple-system, Segoe UI, sans-serif; }
+  header { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center;
+           padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  .brand { font-weight: 800; letter-spacing: .04em; margin-right: 8px; }
+  .brand span { color: var(--accent); }
+  label { color: var(--muted); font-size: 12px; display: flex; gap: 6px; align-items: center; }
+  select, input, button { background: var(--panel); color: var(--ink); border: 1px solid var(--line);
+         border-radius: 6px; padding: 5px 8px; font: inherit; }
+  input[type=number] { width: 64px; }
+  button.primary { background: var(--accent); color: #111; border: 0; font-weight: 700; cursor: pointer; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; cursor: pointer; }
+  .seg button.on { background: var(--ink); color: var(--bg); }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; padding: 16px; }
+  @media (max-width: 980px) { main { grid-template-columns: 1fr; } }
+  .stage { position: relative; border-radius: 10px; overflow: hidden; background: var(--grass);
+           aspect-ratio: 105 / 68; }
+  canvas#pitch { width: 100%; height: 100%; display: block; }
+  .bug { position: absolute; top: 12px; left: 12px; display: flex; align-items: stretch;
+         background: rgba(8,12,18,.88); border-radius: 6px; overflow: hidden; font-weight: 700; }
+  .bug .t { padding: 6px 10px; display: flex; gap: 8px; align-items: center; }
+  .bug .sw { width: 6px; align-self: stretch; }
+  .bug .score { background: var(--ink); color: var(--bg); padding: 6px 10px; font-variant-numeric: tabular-nums; }
+  .bug .clock { padding: 6px 10px; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .statbug { position: absolute; top: 12px; right: 12px; max-width: 46%;
+             background: rgba(8,12,18,.88); border-left: 3px solid var(--accent); border-radius: 6px;
+             padding: 8px 12px; opacity: 0; transform: translateY(-6px); transition: .3s; }
+  .lower { position: absolute; left: 4%; right: 4%; bottom: 5%; background: rgba(8,12,18,.92);
+           border-radius: 8px; overflow: hidden; opacity: 0; transform: translateY(10px); transition: .35s; }
+  .lower .h { background: var(--accent); color: #111; font-weight: 800; padding: 6px 14px; font-size: 16px; }
+  .lower .b { padding: 8px 14px 10px; }
+  .tag { position: absolute; background: rgba(8,12,18,.9); border-radius: 4px; padding: 3px 8px;
+         font-size: 12px; font-weight: 600; white-space: nowrap; opacity: 0; transition: .25s;
+         transform: translate(-50%, -140%); pointer-events: none; }
+  .show { opacity: 1 !important; transform: none !important; }
+  .tag.show { transform: translate(-50%, -140%) !important; }
+  .verified { color: var(--ok); font-size: 11px; font-weight: 700; margin-left: 6px; }
+  aside { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .card h3 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  td { padding: 3px 0; } td:first-child, td:last-child { width: 56px; font-weight: 700; }
+  td:last-child { text-align: right; } td:nth-child(2) { text-align: center; color: var(--muted); font-size: 12px; }
+  canvas#mom { width: 100%; height: 70px; display: block; }
+  .feed { max-height: 360px; overflow: auto; display: flex; flex-direction: column; gap: 8px; }
+  .item { border-left: 3px solid var(--line); padding: 2px 0 2px 10px; }
+  .item .m { color: var(--accent); font-weight: 700; margin-right: 6px; }
+  .item details { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .item code { font-size: 11px; }
+  .recap { white-space: pre-wrap; }
+  .pill { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); }
+  .focus { margin-top: 8px; font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">PITCH<span>SIDE</span></div>
+  <label>Home <select id="home"></select></label>
+  <label>Away <select id="away"></select></label>
+  <label>Seed <input id="seed" type="number" value="7"></label>
+  <label>Speed <select id="speed"><option>20</option><option selected>40</option><option>90</option><option>200</option></select></label>
+  <div class="seg" id="mode"><button data-v="casual" class="on">Casual</button><button data-v="analyst">Analyst</button></div>
+  <label>Language <select id="lang"><option value="en">English</option><option value="es">Español</option><option value="pt">Português</option><option value="fr">Français</option></select></label>
+  <label>My club <select id="club"><option value="">None</option></select></label>
+  <label>Follow player <select id="player"><option value="">None</option></select></label>
+  <button class="primary" id="go">Kick off</button>
+  <span class="pill" id="brain">idle</span>
+</header>
+<main>
+  <section>
+    <div class="stage" id="stage">
+      <canvas id="pitch"></canvas>
+      <div class="bug" id="bug" style="display:none">
+        <div class="sw" id="hsw"></div><div class="t" id="hn">HOM</div>
+        <div class="score" id="sc">0-0</div>
+        <div class="t" id="an">AWY</div><div class="sw" id="asw"></div>
+        <div class="clock" id="clk">0'</div>
+      </div>
+      <div class="statbug" id="statbug"><b id="sbh"></b><div id="sbb" style="font-size:12px;color:var(--muted)"></div></div>
+      <div class="lower" id="lower"><div class="h" id="lh"></div><div class="b" id="lb"></div></div>
+      <div class="tag" id="tag"></div>
+    </div>
+    <div class="card" id="recapCard" style="margin-top:16px;display:none">
+      <h3>Full-time recap</h3><div class="recap" id="recap"></div>
+    </div>
+  </section>
+  <aside>
+    <div class="card"><h3>Momentum <span class="pill" id="ctrl">control —</span></h3><canvas id="mom"></canvas></div>
+    <div class="card"><h3>Match stats</h3><table id="stats"></table><div class="focus" id="focus"></div></div>
+    <div class="card"><h3>Key moments · verified by code</h3><div class="feed" id="feed"></div></div>
+  </aside>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+let meta = null, es = null, nowT = 0, players = {}, momentum = [], ball = {x: 52.5, y: 34}, actor = null;
+const queue = { lower_third: [], stat_bug: [], player_tag: [] }, busy = {};
+
+async function init() {
+  const clubs = await (await fetch('/api/clubs')).json();
+  for (const sel of ['home', 'away', 'club']) clubs.forEach(c => $(sel).add(new Option(c.name, c.id)));
+  $('away').value = 'MAR';
+  document.querySelectorAll('#mode button').forEach(b => b.onclick = () => {
+    document.querySelectorAll('#mode button').forEach(x => x.classList.toggle('on', x === b));
+  });
+  $('go').onclick = start;
+  draw();
+}
+const mode = () => document.querySelector('#mode .on').dataset.v;
+
+function start() {
+  if (es) es.close();
+  momentum = []; $('feed').innerHTML = ''; $('recapCard').style.display = 'none';
+  const q = new URLSearchParams({ home: $('home').value, away: $('away').value, seed: $('seed').value,
+    speed: $('speed').value, mode: mode(), lang: $('lang').value });
+  if ($('club').value) q.set('club', $('club').value);
+  if ($('player').value) q.set('player', $('player').value);
+  es = new EventSource('/api/live?' + q);
+  es.addEventListener('meta', (e) => onMeta(JSON.parse(e.data)));
+  es.addEventListener('event', (e) => onEvent(JSON.parse(e.data)));
+  es.addEventListener('state', (e) => onState(JSON.parse(e.data)));
+  es.addEventListener('overlay', (e) => enqueue(JSON.parse(e.data)));
+  es.addEventListener('recap', (e) => { onRecap(JSON.parse(e.data)); es.close(); });
+}
+
+function onMeta(m) {
+  meta = m; players = {};
+  for (const side of ['home', 'away']) m[side].players.forEach(p => players[p.id] = { ...p, team: m[side].id, color: m[side].color });
+  $('bug').style.display = 'flex';
+  $('hn').textContent = m.home.short; $('an').textContent = m.away.short;
+  $('hsw').style.background = m.home.color; $('asw').style.background = m.away.color;
+  $('brain').textContent = m.brain === 'foundry' ? 'agents: Foundry' : 'agents: offline';
+  const keep = $('player').value, ps = $('player');
+  ps.length = 1;
+  for (const side of ['home', 'away']) m[side].players.forEach(p => ps.add(new Option(`${m[side].short} #${p.number} ${p.name}`, p.id)));
+  ps.value = keep;
+}
+
+function onEvent(e) {
+  nowT = e.t;
+  if (e.x != null) { ball = { x: e.end_x ?? e.x, y: e.end_y ?? e.y }; actor = e.player; }
+  draw();
+}
+
+function onState(s) {
+  const [h, a] = [meta.home.id, meta.away.id];
+  $('sc').textContent = `${s.score[h]}-${s.score[a]}`;
+  $('clk').textContent = s.minute + "'";
+  momentum.push(s.momentum); drawMomentum();
+  $('ctrl').textContent = 'control ' + (s.control_index >= 0 ? '+' : '') + s.control_index.toFixed(2);
+  const th = s.teams[h], ta = s.teams[a];
+  const rows = [['Possession', s.possession_pct[h] + '%', s.possession_pct[a] + '%'], ['xG', th.xg, ta.xg],
+    ['Shots', th.shots, ta.shots], ['On target', th.shots_on_target, ta.shots_on_target],
+    ['Pass accuracy', th.pass_accuracy + '%', ta.pass_accuracy + '%'], ['Final-third entries', th.final_third_entries, ta.final_third_entries],
+    ['Pressures', th.pressures, ta.pressures], ['Tackles', th.tackles, ta.tackles], ['Top shot speed', th.max_shot_speed_kmh, ta.max_shot_speed_kmh]];
+  $('stats').innerHTML = rows.map(r => `<tr><td>${r[1]}</td><td>${r[0]}</td><td>${r[2]}</td></tr>`).join('');
+  if (s.focus_player) {
+    const f = s.focus_player, p = players[f.id];
+    $('focus').innerHTML = `<b>${p.name}</b> · ${f.passes} passes (${f.pass_accuracy}%) · ${f.shots} shots · ${f.xg} xG · top ${f.top_speed_kmh} km/h · ${f.carry_m} m carried`;
+  } else $('focus').textContent = '';
+}
+
+function enqueue(o) {
+  addFeed(o);
+  (queue[o.slot === 'full_screen' ? 'lower_third' : o.slot] ||= []).push(o);
+  pump();
+}
+function pump() {
+  for (const slot of Object.keys(queue)) {
+    if (busy[slot] || !queue[slot].length) continue;
+    queue[slot].sort((a, b) => b.priority - a.priority);
+    // drop stale graphics (match time moved on) unless they are goals
+    queue[slot] = queue[slot].filter(o => o.priority >= 0.9 || nowT - o.t_start < 240);
+    if (!queue[slot].length) continue;
+    const o = queue[slot].shift(); busy[slot] = true;
+    const el = slot === 'lower_third' ? $('lower') : slot === 'stat_bug' ? $('statbug') : $('tag');
+    const tick = o.verified ? '<span class="verified">✓ verified</span>' : '';
+    if (slot === 'lower_third') { $('lh').innerHTML = esc(o.headline) + tick; $('lb').textContent = o.body; }
+    else if (slot === 'stat_bug') { $('sbh').innerHTML = esc(o.headline) + tick; $('sbb').textContent = o.body; }
+    else { el.textContent = o.headline; placeTag(); }
+    el.classList.add('show');
+    const ms = slot === 'lower_third' ? 6500 : slot === 'stat_bug' ? 5000 : 3000;
+    setTimeout(() => { el.classList.remove('show'); setTimeout(() => { busy[slot] = false; pump(); }, 350); }, ms);
+  }
+}
+function addFeed(o) {
+  const d = document.createElement('div'); d.className = 'item';
+  const min = Math.floor(o.t_start / 60) + 1;
+  d.innerHTML = `<span class="m">${min}'</span><b>${esc(o.headline)}</b>${o.verified ? '<span class="verified">✓</span>' : ''}
+    <div>${esc(o.body)}</div>
+    <details><summary>agents & evidence</summary>
+      ${o.agent_trace.map(t => `<div>${t.ok ? '✓' : '✗'} ${t.agent} · ${esc(t.note)}</div>`).join('')}
+      <div>events: <code>${o.evidence_event_ids.slice(-4).map(x => x.split('-').pop()).join(', ')}</code></div>
+    </details>`;
+  $('feed').prepend(d);
+}
+function onRecap(r) {
+  $('recapCard').style.display = 'block';
+  $('recap').textContent = r.recap + `\n\n[${r.source}]`;
+}
+const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+function draw() {
+  const c = $('pitch'), r = c.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+  c.width = r.width * dpr; c.height = r.height * dpr;
+  const g = c.getContext('2d'), sx = c.width / 105, sy = c.height / 68;
+  for (let i = 0; i < 10; i++) { g.fillStyle = i % 2 ? '#12351f' : '#153d24'; g.fillRect(i * c.width / 10, 0, c.width / 10 + 1, c.height); }
+  g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 1.5 * dpr;
+  const R = (x, y, w, h) => g.strokeRect(x * sx, y * sy, w * sx, h * sy);
+  R(1, 1, 103, 66); g.beginPath(); g.moveTo(52.5 * sx, sy); g.lineTo(52.5 * sx, 67 * sy); g.stroke();
+  g.beginPath(); g.ellipse(52.5 * sx, 34 * sy, 9.15 * sx, 9.15 * sy, 0, 0, 7); g.stroke();
+  R(1, 13.85, 16.5, 40.3); R(87.5, 13.85, 16.5, 40.3); R(1, 24.85, 5.5, 18.3); R(98.5, 24.85, 5.5, 18.3);
+  if (actor && players[actor]) {
+    const p = players[actor];
+    g.fillStyle = p.color; g.beginPath(); g.arc(ball.x * sx - 10 * dpr, ball.y * sy, 9 * dpr, 0, 7); g.fill();
+    g.fillStyle = '#fff'; g.font = `${10 * dpr}px system-ui`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(p.number, ball.x * sx - 10 * dpr, ball.y * sy);
+  }
+  g.fillStyle = '#fff'; g.beginPath(); g.arc(ball.x * sx, ball.y * sy, 4.5 * dpr, 0, 7); g.fill();
+  placeTag();
+}
+function placeTag() {
+  const r = $('stage').getBoundingClientRect(), t = $('tag');
+  t.style.left = (ball.x / 105 * r.width) + 'px'; t.style.top = (ball.y / 68 * r.height) + 'px';
+}
+function drawMomentum() {
+  const c = $('mom'), r = c.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+  c.width = r.width * dpr; c.height = r.height * dpr;
+  const g = c.getContext('2d'), w = c.width, h = c.height, n = Math.max(momentum.length, 2);
+  g.clearRect(0, 0, w, h); g.strokeStyle = '#223042'; g.beginPath(); g.moveTo(0, h / 2); g.lineTo(w, h / 2); g.stroke();
+  momentum.forEach((m, i) => {
+    const x = i / (n - 1) * w, bh = m * h / 2;
+    g.fillStyle = m >= 0 ? meta.home.color : meta.away.color;
+    g.fillRect(x, h / 2 - Math.max(bh, 0), Math.max(w / n, 1), Math.abs(bh));
+  });
+}
+addEventListener('resize', () => { draw(); if (meta) drawMomentum(); });
+init();
+</script>
+</body>
+</html>
